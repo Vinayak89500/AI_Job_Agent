@@ -18,23 +18,24 @@ This tool uses Asynchronous Web Scraping (Playwright) to find jobs, a Vector Dat
 
 ## 🚀 Quick Start Guide
 
-### 1. Installation
-Ensure you have Python 3.10+ installed. Download or clone this repository, then run:
+### Option 1: The 1-Click Windows Installer (Recommended)
+If you are on Windows, you don't need to touch the terminal!
+1. Download or clone this repository.
+2. Double-click the **`Start_Job_Agent.bat`** file.
+3. It will automatically install Python dependencies, set up the headless browsers, boot the server, and open the dashboard in your default web browser!
+
+### Option 2: Manual Installation (Mac / Linux)
+Ensure you have Python 3.10+ installed. Open your terminal and run:
 
 ```bash
+# 1. Install dependencies
 pip install -r requirements.txt
 playwright install
-```
 
-### 2. Booting the Agent
-Start the FastAPI server:
-```bash
+# 2. Boot the Agent
 python backend/app/api.py
 ```
-
-### 3. The Setup Wizard
-Open your browser and navigate to:
-**`http://localhost:8000`**
+Then, open your browser and navigate to: **`http://localhost:8000`**
 
 On your first launch, the **Setup Wizard** will automatically appear. 
 1. Enter your Name, Contact Info, and Groq API Key.
