@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Job Agent Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white p-10 font-sans">
+
+    <!-- SETUP WIZARD MODAL -->
+    <div id="setup-modal" class="hidden fixed inset-0 bg-gray-900/95 backdrop-blur-sm z-50 overflow-y-auto w-full h-full">
+        <div class="max-w-3xl mx-auto my-10 bg-gray-800 border border-gray-700 shadow-2xl rounded-xl p-8">
+            <h2 class="text-3xl font-bold text-blue-400 mb-2">Welcome to AI Job Agent! 🚀</h2>
+            <p class="text-gray-400 mb-6 border-b border-gray-700 pb-4">It looks like this is your first time. Let's configure your local agent.</p>
+            
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Full Name</label>
+                    <input type="text" id="setup-name" placeholder="John Doe" class="w-full bg-gray-700 text-white rounded p-3 border border-gray-600 focus:border-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">City, Country</label>
+                    <input type="text" id="setup-location" placeholder="Bengaluru, India" class="w-full bg-gray-700 text-white rounded p-3 border border-gray-600 focus:border-blue-500 outline-none">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Phone Number</label>
+                    <input type="text" id="setup-phone" placeholder="+91 9876543210" class="w-full bg-gray-700 text-white rounded p-3 border border-gray-600 focus:border-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Email Address</label>
+                    <input type="text" id="setup-email" placeholder="john@example.com" class="w-full bg-gray-700 text-white rounded p-3 border border-gray-600 focus:border-blue-500 outline-none">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">LinkedIn URL</label>
+                    <input type="text" id="setup-linkedin" placeholder="linkedin.com/in/johndoe" class="w-full bg-gray-700 text-white rounded p-3 border border-gray-600 focus:border-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-green-400 mb-1">
+                        Groq API Key (Free) 
+                        <a href="https://console.groq.com/keys" target="_blank" class="text-xs text-blue-400 hover:underline ml-1 font-normal">(Get one here ↗)</a>
+                    </label>
+                    <input type="password" id="setup-groq" placeholder="gsk_..." class="w-full bg-gray-900 text-green-400 font-mono rounded p-3 border border-green-700 focus:border-green-500 outline-none shadow-inner">
+                </div>
+            </div>
+
+            <div class="mb-6">
+                <label class="block text-sm text-gray-400 mb-1">Master Career Profile (Your giant, unfiltered resume text)</label>
+                <textarea id="setup-resume" rows="8" placeholder="Paste your massive Master Resume here. The agent will read this and embed it into a mathematical Vector Database..." class="w-full bg-gray-700 text-white rounded p-3 border border-gray-600 focus:border-blue-500 outline-none font-mono text-xs"></textarea>
+            </div>
+
+            <button onclick="submitSetup()" id="setup-btn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded shadow-lg text-lg transition-all">
+                Save Settings & Initialize Vector DB 🧠
+            </button>
+            <p id="setup-status" class="text-center mt-4 text-sm font-bold hidden"></p>
+        </div>
+    </div>
+
+    <div class="max-w-6xl mx-auto">
+        <h1 class="text-4xl font-bold mb-2 text-blue-400">AI Job Application Agent</h1>
+        <p class="text-gray-400 mb-6">Human-in-the-Loop Command Center</p>
+
+        <!-- DYNAMIC SEARCH FILTERS -->
+        <div class="bg-gray-800 p-6 rounded-lg shadow-xl mb-6 border border-gray-700">
+            <h2 class="text-xl font-bold mb-4 text-blue-300">🎯 Target Criteria</h2>
+            <div class="flex gap-4 items-end">
+                <div class="flex-1">
+                    <label class="block text-sm text-gray-400 mb-1">Which jobs are you looking for?</label>
+                    <input type="text" id="job-title" value="Associate Product Manager" class="w-full bg-gray-700 text-white rounded p-2 border border-gray-600 focus:border-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Years of Experience</label>
+                    <input type="number" id="job-exp" value="0" min="0" max="10" class="w-full bg-gray-700 text-white rounded p-2 border border-gray-600 focus:border-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Job Limit</label>
+                    <select id="job-limit" class="w-full bg-gray-700 text-white rounded p-2 border border-gray-600 focus:border-blue-500 outline-none">
+                        <option value="5">5 Jobs</option>
+                        <option value="10">10 Jobs</option>
+                        <option value="15">15 Jobs</option>
+                        <option value="25">25 Jobs</option>
+                        <option value="50">50 Jobs</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Credentials Row -->
+            <div class="grid grid-cols-2 gap-4 mt-4">
+                <div class="flex flex-col gap-2">
+                    <label class="text-sm font-bold text-gray-400 uppercase">Naukri Username (Email)</label>
+                    <input type="text" id="username" placeholder="vinayak@example.com" class="bg-gray-700 text-white border border-gray-600 p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div class="flex flex-col gap-2">
+                    <label class="text-sm font-bold text-gray-400 uppercase">Naukri Password</label>
+                    <input type="password" id="password" placeholder="••••••••" class="bg-gray-700 text-white border border-gray-600 p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+            </div>
+            
+            <div class="flex gap-4 mt-6">
+                <button onclick="startSearch()" id="search-btn" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded shadow-lg transition-transform transform hover:scale-[1.02] active:scale-95 text-lg">
+                    🔍 Start Searching
+                </button>
+                <button onclick="triggerReset()" id="reset-btn" class="bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-6 rounded shadow-lg transition-all" title="Clear all jobs and generated resumes to start completely fresh">
+                    <span id="reset-text">🗑️ Clear Cache</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- MASTER CONTROLS -->
+        <div class="flex gap-4 mb-8 bg-gray-800 p-4 rounded-lg shadow-xl border border-gray-700">
+            <button onclick="fetch('/api/batch_apply', {method: 'POST'})" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded transition-all">
+                🤖 1. Batch Auto-Apply (Naukri Jobs)
+            </button>
+            <button onclick="fetch('/api/generate', {method: 'POST'})" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded transition-all">
+                📄 2. Generate Resumes (Company Site Jobs)
+            </button>
+        </div>
+
+        <!-- JOBS DATABASE -->
+        <div class="bg-gray-800 rounded-lg shadow-xl overflow-hidden">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-gray-700 text-gray-300 uppercase text-sm">
+                        <th class="p-4 border-b border-gray-600">Company</th>
+                        <th class="p-4 border-b border-gray-600">Job Title</th>
+                        <th class="p-4 border-b border-gray-600">Apply Type</th>
+                        <th class="p-4 border-b border-gray-600">Generated Resume</th>
+                        <th class="p-4 border-b border-gray-600 text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="jobs-table">
+                    <!-- Jobs will load here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // START SEARCH (Calls Scraper)
+        async function startSearch() {
+            const title = document.getElementById('job-title').value;
+            const exp = document.getElementById('job-exp').value;
+            const limit = document.getElementById('job-limit').value;
+            const username = document.getElementById('username').value;
+            const pass = document.getElementById('password').value;
+
+            alert(`Starting Bot for: ${title} (${exp} YOE, Limit: ${limit})`);
+
+            await fetch('/api/scrape', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    job_title: title, 
+                    experience: exp,
+                    max_jobs: parseInt(limit),
+                    username: username,
+                    password: pass
+                })
+            });
+            
+            alert("Bot has launched in the background. Please wait ~60s and refresh!");
+        }
+
+        // OPEN RESUME IN MICROSOFT WORD
+        async function openResume(filename) {
+            alert(`📄 Opening ${filename} in Microsoft Word...`);
+            await fetch('/api/open', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: filename })
+            });
+        }
+
+        // TRIGGER SINGLE AUTO-APPLY API
+        async function triggerAutoApply(link, company) {
+            alert(`🚀 Initiating Auto-Apply sequence for ${company}...\nPlease do not touch your mouse while the ghost browser is running!`);
+            
+            await fetch('/api/apply', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ link: link, company: company })
+            });
+        }
+
+        async function triggerReset() {
+            if (!confirm("Are you sure you want to completely clear the cache? This will delete all jobs from the UI and wipe any tailored resumes you haven't moved elsewhere.")) {
+                return;
+            }
+            
+            const btnText = document.getElementById('reset-text');
+            const originalText = btnText.innerHTML;
+            btnText.innerHTML = "⏳ Wiping...";
+            document.getElementById('reset-btn').disabled = true;
+            document.getElementById('reset-btn').classList.add('opacity-50');
+            
+            try {
+                await fetch('/api/reset', { method: 'POST' });
+                await fetchJobs(); 
+            } catch (err) {
+                console.error("Reset failed", err);
+            } finally {
+                btnText.innerHTML = originalText;
+                document.getElementById('reset-btn').disabled = false;
+                document.getElementById('reset-btn').classList.remove('opacity-50');
+            }
+        }
+
+        // FETCH JOBS TO DISPLAY
+        async function fetchJobs() {
+            const response = await fetch('/api/jobs');
+            const jobs = await response.json();
+            const tableBody = document.getElementById('jobs-table');
+            
+            tableBody.innerHTML = ''; // Clear table before reloading
+
+            jobs.forEach(job => {
+                const isNaukri = job.apply_type === "Naukri Apply";
+                const btnClass = isNaukri ? "bg-blue-600 hover:bg-blue-500" : "bg-purple-600 hover:bg-purple-500";
+                const btnText = isNaukri ? "Auto-Apply 🚀" : "Manual Apply ↗";
+                const onClickAction = isNaukri ? `triggerAutoApply('${job.link}', '${job.company}')` : `window.open('${job.link}', '_blank')`;
+                const badgeColor = isNaukri ? "bg-green-900 text-green-300" : "bg-yellow-900 text-yellow-300";
+                
+                let resumeContent = `<span class="text-gray-500 italic">${job.resume_file}</span>`;
+                if (job.resume_file !== "Not Applicable" && job.resume_file !== "Not Generated") {
+                    resumeContent = `
+                        <div class="flex flex-col gap-1 items-start">
+                            <button onclick="openResume('${job.resume_file}')" 
+                                    class="text-blue-300 font-mono text-xs bg-blue-900/30 px-2 py-1 rounded border border-blue-800 break-all cursor-pointer hover:bg-blue-800/50 transition-colors flex items-center gap-1 shadow-sm">
+                                📄 ${job.resume_file}
+                            </button>
+                            ${job.ats_score ? `<span class="text-green-400 text-xs font-bold flex items-center gap-1 mt-1">✅ ATS: ${job.ats_score}</span>` : ''}
+                        </div>
+                    `;
+                } else if (job.resume_file === "Not Generated") {
+                    resumeContent = `<span class="text-orange-400 italic text-sm">Not Generated</span>`;
+                }
+
+                tableBody.innerHTML += `
+                    <tr class="border-b border-gray-700 hover:bg-gray-750 transition-colors">
+                        <td class="p-4 font-semibold">${job.company}</td>
+                        <td class="p-4 text-gray-300">
+                            <a href="${job.link}" target="_blank" class="hover:text-blue-400 underline">${job.title}</a>
+                        </td>
+                        <td class="p-4">
+                            <span class="px-3 py-1 rounded-full text-xs font-bold ${badgeColor}">
+                                ${job.apply_type}
+                            </span>
+                        </td>
+                        <td class="p-4">
+                            ${resumeContent}
+                        </td>
+                        <td class="p-4 text-center">
+                            <button onclick="${onClickAction}" 
+                                    class="px-4 py-2 rounded font-bold text-white transition-all cursor-pointer ${btnClass}">
+                                ${btnText}
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+        
+        async function checkConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const data = await response.json();
+                if (data.status === "error" || !data.fullName) {
+                    // Config doesn't exist! Show setup wizard
+                    document.getElementById('setup-modal').classList.remove('hidden');
+                }
+            } catch (err) {
+                console.error("Config check failed", err);
+            }
+        }
+
+        async function submitSetup() {
+            const btn = document.getElementById('setup-btn');
+            const status = document.getElementById('setup-status');
+            
+            btn.innerHTML = "⏳ Initializing Agent (This may take 30 seconds)...";
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+            status.classList.remove('hidden');
+            status.className = "text-center mt-4 text-sm font-bold text-yellow-400";
+            status.innerHTML = "Saving config and embedding Vector Database in the background...";
+
+            const payload = {
+                fullName: document.getElementById('setup-name').value,
+                cityCountry: document.getElementById('setup-location').value,
+                phone: document.getElementById('setup-phone').value,
+                email: document.getElementById('setup-email').value,
+                linkedin: document.getElementById('setup-linkedin').value,
+                groqApiKey: document.getElementById('setup-groq').value,
+                resumeText: document.getElementById('setup-resume').value
+            };
+
+            try {
+                const response = await fetch('/api/setup', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                if (result.status === "success") {
+                    status.className = "text-center mt-4 text-sm font-bold text-green-400";
+                    status.innerHTML = "✅ Initialization Complete!";
+                    setTimeout(() => {
+                        document.getElementById('setup-modal').classList.add('hidden');
+                    }, 1500);
+                } else {
+                    status.className = "text-center mt-4 text-sm font-bold text-red-400";
+                    status.innerHTML = "❌ Error: " + result.message;
+                    btn.innerHTML = "Try Again";
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-50');
+                }
+            } catch (err) {
+                status.className = "text-center mt-4 text-sm font-bold text-red-400";
+                status.innerHTML = "❌ Network Error";
+                btn.innerHTML = "Try Again";
+                btn.disabled = false;
+                btn.classList.remove('opacity-50');
+            }
+        }
+
+        // Initial Load
+        checkConfig();
+        fetchJobs();
+        
+        // Auto-refresh the jobs table every 3 seconds
+        setInterval(fetchJobs, 3000);
+    </script>
+</body>
+</html>

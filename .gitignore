@@ -1,0 +1,10 @@
+.env
+.venv/
+chrome_profile/
+chroma_db/
+jobs_database.csv
+Tailored_Resumes/
+__pycache__/
+*.mp4
+config.json
+Master_Career_Profile.txt
