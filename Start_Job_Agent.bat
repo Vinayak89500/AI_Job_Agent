@@ -29,8 +29,8 @@ call .venv\Scripts\activate.bat
 
 :: Install dependencies
 echo [INFO] Checking dependencies...
-pip install -r requirements.txt -q
-playwright install chromium -q
+pip install -r requirements.txt
+playwright install chromium
 
 echo.
 echo ===================================================
