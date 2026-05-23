@@ -1,5 +1,9 @@
-import chromadb
+import sys
 import os
+import chromadb
+
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
 
 # 1. Initialize Local Vector Database
 root_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))

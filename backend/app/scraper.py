@@ -9,6 +9,51 @@ from playwright.async_api import async_playwright
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
 
+def clean_job_description(text):
+    if not text:
+        return ""
+    
+    # 1. Try to find the start of the job description
+    start_markers = ["Job description", "job description", "Job Description", "Job Highlights", "job highlights", "Job highlights"]
+    start_idx = -1
+    for marker in start_markers:
+        idx = text.find(marker)
+        if idx != -1:
+            start_idx = idx
+            break
+            
+    if start_idx != -1:
+        text_desc = text[start_idx:]
+    else:
+        text_desc = text
+        
+    # 2. Try to find the end of the job description (to cut off footer noise)
+    end_markers = [
+        "Disclaimer:", 
+        "Role:", 
+        "Industry Type:", 
+        "Similar jobs", 
+        "About company", 
+        "About the company", 
+        "Reviews View all", 
+        "Salary insights", 
+        "Benefits & Perks", 
+        "Services you might be interested in", 
+        "Beware of imposters",
+        "HomeJobs in"
+    ]
+    
+    end_idx = len(text_desc)
+    text_desc_lower = text_desc.lower()
+    for marker in end_markers:
+        idx = text_desc_lower.find(marker.lower())
+        if idx != -1 and idx < end_idx:
+            # Make sure it's not a tiny match early on
+            if idx > 100:
+                end_idx = idx
+                
+    return text_desc[:end_idx].strip()
+
 async def scrape_naukri(job_title, location="", experience="0", max_jobs=100, username="", password=""):
     # 1. Build the SEO path
     path_query = job_title.replace(" ", "-").lower() + "-jobs"
@@ -162,7 +207,7 @@ async def scrape_naukri(job_title, location="", experience="0", max_jobs=100, us
                             
                             body_element = await job_page.query_selector("body")
                             job_text = await body_element.inner_text()
-                            clean_text = job_text.replace('\n', ' ')
+                            clean_text = clean_job_description(job_text).replace('\n', ' ')
                             
                             writer.writerow([title, company, link, apply_type, clean_text])
                             print(f"   -> Successfully saved to database!\n")

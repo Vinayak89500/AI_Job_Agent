@@ -12,6 +12,51 @@ from dotenv import load_dotenv
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
 
+def clean_job_description(text):
+    if not text:
+        return ""
+    
+    # 1. Try to find the start of the job description
+    start_markers = ["Job description", "job description", "Job Description", "Job Highlights", "job highlights", "Job highlights"]
+    start_idx = -1
+    for marker in start_markers:
+        idx = text.find(marker)
+        if idx != -1:
+            start_idx = idx
+            break
+            
+    if start_idx != -1:
+        text_desc = text[start_idx:]
+    else:
+        text_desc = text
+        
+    # 2. Try to find the end of the job description (to cut off footer noise)
+    end_markers = [
+        "Disclaimer:", 
+        "Role:", 
+        "Industry Type:", 
+        "Similar jobs", 
+        "About company", 
+        "About the company", 
+        "Reviews View all", 
+        "Salary insights", 
+        "Benefits & Perks", 
+        "Services you might be interested in", 
+        "Beware of imposters",
+        "HomeJobs in"
+    ]
+    
+    end_idx = len(text_desc)
+    text_desc_lower = text_desc.lower()
+    for marker in end_markers:
+        idx = text_desc_lower.find(marker.lower())
+        if idx != -1 and idx < end_idx:
+            # Make sure it's not a tiny match early on
+            if idx > 100:
+                end_idx = idx
+                
+    return text_desc[:end_idx].strip()
+
 # 1. Setup API
 root_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 config_path = os.path.join(root_dir, 'config.json')
@@ -70,7 +115,7 @@ with open(csv_file, mode='r', encoding='utf-8') as file:
         company = row[1]
         link = row[2]
         apply_type = row[3]
-        job_description = row[4]
+        job_description = clean_job_description(row[4])
         
         # --- ONLY ADD COMPANY WEBSITE JOBS ---
         if apply_type != "Company Website":
@@ -104,26 +149,29 @@ with open(csv_file, mode='r', encoding='utf-8') as file:
             base_resume = f.read()
             
         my_real_resume = f"""
-## Base Resume
+## CANDIDATE MASTER CAREER PROFILE
 {base_resume}
 
-## Highly Relevant Technical Projects (Retrieved via Vector DB)
+## HIGH-RELEVANCE FOCAL POINTS (Retrieved from Candidate's Background for this JD)
 {retrieved_projects}
 """
         
         try:
             # 1. Send it to the Brain to Tailor!
             max_retries = 3
+            model_to_use = "llama-3.3-70b-versatile"
+            response = None
             for attempt in range(max_retries):
                 try:
                     response = client.chat.completions.create(
-                        model="llama-3.1-8b-instant",
+                        model=model_to_use,
                         max_tokens=1500,
+                        temperature=0.5,
                         messages=[
                             {
                                 "role": "system", 
-                                "content": """You are an expert tech recruiter and master resume writer. 
-Your task is to craft a highly targeted 1-page resume using the candidate's Master Profile.
+                                "content": f"""You are an expert tech recruiter and master resume writer. 
+Your task is to craft a highly targeted 1-page resume using the candidate's Master Profile and the provided high-relevance focal points.
 
 CRITICAL RULES:
 1. FORMATTING: You MUST use these exact section headers: 
@@ -137,19 +185,23 @@ CRITICAL RULES:
    ADDITIONAL
 2. CONTACT INFO: Always use this exact contact block at the top:
    {config_data.get("cityCountry", "City, Country")} | {config_data.get("phone", "Phone")} | {config_data.get("email", "Email")} | {config_data.get("linkedin", "LinkedIn")}
-3. AGGRESSIVELY REWRITE the bullet points to heavily inject the exact keywords, tools, and jargon used in the Job Description.
-4. CLEVER KEYWORD MAPPING: Find highly creative ways to frame the candidate's existing experience to match domain themes (Fintech, Cyber, etc.) without lying.
-5. Translate all past experience into pure Product Management language.
+3. RAG INTEGRATION: Use the "CANDIDATE MASTER CAREER PROFILE" as the absolute source of truth. The "HIGH-RELEVANCE FOCAL POINTS" are specific sections from the candidate's real background that match the target job description. Give these focal points extra prominence and detail when drafting the resume.
+4. PRODUCT MANAGEMENT TRANSLATION: Translate the candidate's engineering achievements (e.g., CAD design, BOM management, mechanical simulation, PLM work) into product management terminology and outcomes (e.g., user-centric design, requirements engineering, product discovery, cross-functional delivery, stakeholder alignment, cycle-time optimization).
+5. STRICT HONESTY & EVIDENCE RULE: Every single skill, tool, framework, domain term, or keyword you add to the Professional Summary, Core Competencies, or Professional Experience MUST have a direct, verifiable foundation in the Candidate's Master Profile. Do NOT invent certifications, project names, or direct work experience in domains (like cybersecurity, data governance, or fintech) where the candidate has no matching foundation in their Master Profile.
 6. NO PLACEHOLDERS or extra 'Notes' at the bottom. Make it a final, polished resume."""
                             },
                             {
                                 "role": "user",
-                                "content": f"MASTER CAREER PROFILE:\n{my_real_resume}\n\nTARGET JOB DESCRIPTION:\n{job_description}\n\nBuild my tailored 1-page resume to perfectly match this job."
+                                "content": f"CANDIDATE PROFILE DATA:\n{my_real_resume}\n\nTARGET CLEAN JOB DESCRIPTION:\n{job_description}\n\nBuild my tailored 1-page resume to perfectly match this job."
                             }
                         ]
                     )
                     break
                 except Exception as api_err:
+                    if model_to_use == "llama-3.3-70b-versatile":
+                        print(f"   -> Groq 70B model failed or rate-limited. Falling back to llama-3.1-8b-instant...")
+                        model_to_use = "llama-3.1-8b-instant"
+                        continue
                     if attempt < max_retries - 1:
                         print(f"   -> API Rate Limit Hit! Sleeping for 20 seconds before retrying (Attempt {attempt+1}/{max_retries})...")
                         time.sleep(20)
@@ -160,23 +212,32 @@ CRITICAL RULES:
 
             # 2. Score the Resume
             print(f"   -> Scoring resume for {company}...")
+            eval_response = None
+            eval_model = "llama-3.3-70b-versatile"
             for attempt in range(max_retries):
                 try:
                     eval_response = client.chat.completions.create(
-                        model="llama-3.1-8b-instant",
+                        model=eval_model,
                         max_tokens=1000,
                         response_format={ "type": "json_object" },
+                        temperature=0.0,
                         messages=[
                             {
                                 "role": "system", 
-                                "content": """You are a strict ATS (Applicant Tracking System) scanner. 
-Evaluate the provided resume against the provided job description. 
+                                "content": """You are a cynical, highly critical senior principal recruiter and ATS (Applicant Tracking System) scanner.
+Evaluate the provided candidate resume against the provided job description.
 You MUST output your evaluation in strict JSON format with exactly these keys:
 {
   "overall_score": <int 0-100>,
   "missing_keywords": [<list of important missing keywords>],
   "feedback": "<Provide 2-3 actionable sentences suggesting exactly how the user can edit their resume to organically include these missing keywords>"
-}"""
+}
+
+STRICT EVALUATION CRITERIA:
+1. KEYWORD MATCH: Check if keywords from the job description are present in the resume.
+2. EVIDENCE VERIFICATION: Do NOT award score points for keywords listed in the 'Professional Summary' or 'Core Competencies' if they are NOT backed up by concrete projects or experience bullet points. If you detect keyword stuffing without evidence, DOCK the overall score by 10 points per occurrence.
+3. DOMAIN ALIGNMENT: Deduct points if there is a mismatch between the candidate's industry background and the job's domain. For generalist/entry-level roles (like Associate Product Manager or Product Analyst), be lenient, as transferable engineering, analytical, and digital transformation skills are highly valued. Only deduct points heavily (resulting in scores below 65) if the role is in a highly specialized technical domain (like Cybersecurity, Cloud SecOps, Medical Devices) where the candidate completely lacks the required domain-specific work experience or credentials.
+4. BE HONEST & CRITICAL: A perfect resume is rare. Do not give scores above 85 unless there is authentic, high-quality, evidence-backed alignment."""
                             },
                             {
                                 "role": "user",
@@ -186,6 +247,10 @@ You MUST output your evaluation in strict JSON format with exactly these keys:
                     )
                     break
                 except Exception as api_err:
+                    if eval_model == "llama-3.3-70b-versatile":
+                        print(f"   -> Groq 70B evaluation model failed or rate-limited. Falling back to llama-3.1-8b-instant...")
+                        eval_model = "llama-3.1-8b-instant"
+                        continue
                     if attempt < max_retries - 1:
                         print(f"   -> API Rate Limit Hit on Scoring! Sleeping for 20 seconds before retrying (Attempt {attempt+1}/{max_retries})...")
                         time.sleep(20)
