@@ -186,7 +186,7 @@ CRITICAL RULES:
 2. CONTACT INFO: Always use this exact contact block at the top:
    {config_data.get("cityCountry", "City, Country")} | {config_data.get("phone", "Phone")} | {config_data.get("email", "Email")} | {config_data.get("linkedin", "LinkedIn")}
 3. RAG INTEGRATION: Use the "CANDIDATE MASTER CAREER PROFILE" as the absolute source of truth. The "HIGH-RELEVANCE FOCAL POINTS" are specific sections from the candidate's real background that match the target job description. Give these focal points extra prominence and detail when drafting the resume.
-4. PRODUCT MANAGEMENT TRANSLATION: Translate the candidate's engineering achievements (e.g., CAD design, BOM management, mechanical simulation, PLM work) into product management terminology and outcomes (e.g., user-centric design, requirements engineering, product discovery, cross-functional delivery, stakeholder alignment, cycle-time optimization).
+4. DYNAMIC ROLE TRANSLATION: Translate the candidate's past achievements into the professional terminology, metrics, and outcomes expected of a {job_title}. Frame their existing skills to highlight transferable value for this specific role without fabricating experience.
 5. STRICT HONESTY & EVIDENCE RULE: Every single skill, tool, framework, domain term, or keyword you add to the Professional Summary, Core Competencies, or Professional Experience MUST have a direct, verifiable foundation in the Candidate's Master Profile. Do NOT invent certifications, project names, or direct work experience in domains (like cybersecurity, data governance, or fintech) where the candidate has no matching foundation in their Master Profile.
 6. NO PLACEHOLDERS or extra 'Notes' at the bottom. Make it a final, polished resume."""
                             },
