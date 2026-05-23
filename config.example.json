@@ -1,0 +1,8 @@
+{
+    "fullName": "Jane Doe",
+    "cityCountry": "San Francisco, USA",
+    "phone": "+1 555-0100",
+    "email": "jane.doe@example.com",
+    "linkedin": "https://linkedin.com/in/janedoe",
+    "groqApiKey": "gsk_your_groq_api_key_here_..."
+}
