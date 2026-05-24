@@ -1,0 +1,20 @@
+[
+    {
+        "id": "tc_001",
+        "job_title": "Product Manager",
+        "job_description": "We are looking for a Product Manager to lead cross-functional teams, define product requirements, and manage the product lifecycle from conception to launch. You should have experience with Agile methodologies, user-centric design, and stakeholder alignment. A strong technical background is a plus.",
+        "expected_retrieval_keywords": ["product", "requirements", "stakeholder", "cross-functional"]
+    },
+    {
+        "id": "tc_002",
+        "job_title": "Data Scientist",
+        "job_description": "Seeking a Data Scientist with strong Python programming skills. Must have experience building machine learning models, working with predictive analytics, and optimizing data pipelines. Familiarity with SQL and data visualization tools is required.",
+        "expected_retrieval_keywords": ["python", "machine learning", "data", "analytics", "sql"]
+    },
+    {
+        "id": "tc_003",
+        "job_title": "Mechanical Design Engineer",
+        "job_description": "We need a Mechanical Design Engineer to work on complex hardware assemblies. Must be highly proficient in CAD design (SolidWorks/AutoCAD), structural analysis, and BOM management. Experience with manufacturing processes and PLM software is highly desired.",
+        "expected_retrieval_keywords": ["cad", "mechanical", "bom", "manufacturing"]
+    }
+]
