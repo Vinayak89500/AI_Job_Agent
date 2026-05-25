@@ -114,10 +114,10 @@
 
         <!-- MASTER CONTROLS -->
         <div class="flex gap-4 mb-8 bg-gray-800 p-4 rounded-lg shadow-xl border border-gray-700">
-            <button onclick="fetch('/api/batch_apply', {method: 'POST'})" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded transition-all">
+            <button onclick="triggerBatchApply()" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded transition-all">
                 🤖 1. Batch Auto-Apply (Naukri Jobs)
             </button>
-            <button onclick="fetch('/api/generate', {method: 'POST'})" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded transition-all">
+            <button onclick="triggerGenerate()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded transition-all">
                 📄 2. Generate Resumes (Company Site Jobs)
             </button>
         </div>
@@ -142,68 +142,133 @@
     </div>
 
     <script>
+        // ── Auth token — fetched once on load, used on all POST requests ─────────
+        let API_TOKEN = "";
+
+        async function loadToken() {
+            try {
+                const res = await fetch('/api/token');
+                const data = await res.json();
+                API_TOKEN = data.token || "";
+            } catch (e) {
+                console.error("Could not load API token:", e);
+            }
+        }
+
+        function authHeaders() {
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${API_TOKEN}`
+            };
+        }
+
         // START SEARCH (Calls Scraper)
         async function startSearch() {
             const title = document.getElementById('job-title').value;
             const exp = document.getElementById('job-exp').value;
             const limit = document.getElementById('job-limit').value;
-            const username = document.getElementById('username').value;
-            const pass = document.getElementById('password').value;
-
+            // username/password fields kept in UI for reference but scraper reads from .env
             alert(`Starting Bot for: ${title} (${exp} YOE, Limit: ${limit})`);
 
-            await fetch('/api/scrape', {
+            const res = await fetch('/api/scrape', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    job_title: title, 
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    job_title: title,
                     experience: exp,
-                    max_jobs: parseInt(limit),
-                    username: username,
-                    password: pass
+                    max_jobs: parseInt(limit)
                 })
             });
-            
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                alert("❌ Scrape failed: " + (err.detail || res.status));
+                return;
+            }
             alert("Bot has launched in the background. Please wait ~60s and refresh!");
         }
 
         // OPEN RESUME IN MICROSOFT WORD
         async function openResume(filename) {
             alert(`📄 Opening ${filename} in Microsoft Word...`);
-            await fetch('/api/open', {
+            const res = await fetch('/api/open', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: authHeaders(),
                 body: JSON.stringify({ filename: filename })
             });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                alert("❌ Could not open file: " + (err.detail || res.status));
+            }
         }
 
         // TRIGGER SINGLE AUTO-APPLY API
         async function triggerAutoApply(link, company) {
             alert(`🚀 Initiating Auto-Apply sequence for ${company}...\nPlease do not touch your mouse while the ghost browser is running!`);
-            
-            await fetch('/api/apply', {
+            const res = await fetch('/api/apply', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: authHeaders(),
                 body: JSON.stringify({ link: link, company: company })
             });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                alert("❌ Auto-apply failed: " + (err.detail || res.status));
+            }
+        }
+
+        // BATCH AUTO-APPLY (Naukri)
+        async function triggerBatchApply() {
+            const res = await fetch('/api/batch_apply', {
+                method: 'POST',
+                headers: authHeaders()
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                alert("❌ Batch apply failed: " + (err.detail || res.status));
+            } else {
+                alert("🤖 Batch apply launched in background!");
+            }
+        }
+
+        // GENERATE RESUMES
+        async function triggerGenerate() {
+            const res = await fetch('/api/generate', {
+                method: 'POST',
+                headers: authHeaders()
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                alert("❌ Resume generation failed: " + (err.detail || res.status));
+            } else {
+                alert("📄 Resume generation launched in background!");
+            }
         }
 
         async function triggerReset() {
             if (!confirm("Are you sure you want to completely clear the cache? This will delete all jobs from the UI and wipe any tailored resumes you haven't moved elsewhere.")) {
                 return;
             }
-            
+
             const btnText = document.getElementById('reset-text');
             const originalText = btnText.innerHTML;
             btnText.innerHTML = "⏳ Wiping...";
             document.getElementById('reset-btn').disabled = true;
             document.getElementById('reset-btn').classList.add('opacity-50');
-            
+
             try {
-                await fetch('/api/reset', { method: 'POST' });
-                await fetchJobs(); 
+                const res = await fetch('/api/reset', {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: JSON.stringify({ confirm: "DELETE_ALL" })
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    alert("❌ Reset failed: " + (err.detail || res.status));
+                } else {
+                    await fetchJobs();
+                }
             } catch (err) {
                 console.error("Reset failed", err);
+                alert("❌ Network error during reset.");
             } finally {
                 btnText.innerHTML = originalText;
                 document.getElementById('reset-btn').disabled = false;
@@ -330,12 +395,14 @@
             }
         }
 
-        // Initial Load
-        checkConfig();
-        fetchJobs();
-        
-        // Auto-refresh the jobs table every 3 seconds
-        setInterval(fetchJobs, 3000);
+        // Initial Load — token must be fetched before anything that POSTs
+        (async () => {
+            await loadToken();
+            await checkConfig();
+            await fetchJobs();
+            // Auto-refresh the jobs table every 3 seconds
+            setInterval(fetchJobs, 3000);
+        })();
     </script>
 </body>
 </html>

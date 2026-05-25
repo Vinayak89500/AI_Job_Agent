@@ -129,6 +129,13 @@ def read_root() -> HTMLResponse:
         raise HTTPException(status_code=404, detail="index.html not found.")
 
 
+@app.get("/api/token")
+def get_token() -> dict:
+    """Return the API token so the frontend can include it in POST requests.
+    Safe to expose on localhost-only server."""
+    return {"token": _API_TOKEN}
+
+
 @app.get("/api/config")
 def get_config() -> dict:
     if os.path.exists(CONFIG_PATH):
