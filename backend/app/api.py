@@ -152,9 +152,11 @@ def get_config() -> dict:
 def get_jobs() -> list[dict]:
     global _jobs_cache, _jobs_cache_mtime
 
-    # FIX #8: Invalidate cache only if CSV has been modified
+    # FIX #8: Invalidate cache when CSV or Tailored_Resumes folder changes
     try:
-        current_mtime = os.path.getmtime(CSV_PATH) if os.path.exists(CSV_PATH) else 0.0
+        csv_mtime     = os.path.getmtime(CSV_PATH) if os.path.exists(CSV_PATH) else 0.0
+        resumes_mtime = os.path.getmtime(RESUMES_DIR) if os.path.exists(RESUMES_DIR) else 0.0
+        current_mtime = max(csv_mtime, resumes_mtime)
     except OSError:
         current_mtime = 0.0
 
