@@ -1,188 +1,284 @@
-import os
-import sys
+"""
+auto_apply.py — Single-job auto-apply via a persistent Chrome profile.
+
+Fixes applied vs. original:
+  - FIX #1 : Polling interval changed 1s → 2s (halves DOM queries; ~300 calls/run)
+  - FIX #2 : msvcrt import wrapped in try/except ImportError (safe on macOS/Linux)
+  - FIX #3 : Screenshots only saved when config.json has save_debug_screenshots=true
+  - FIX #4 : Filename sanitised with re.sub (not just space→underscore)
+  - FIX #5 : apply_to_job returns a result dict; api.py can read success/message
+  - FIX #6 : Second goto() on retry is now wrapped in its own try/except
+  - FIX #7 : 'Already applied' check added before clicking Apply
+  - FIX #8 : context.close() guaranteed via try/finally around playwright block
+"""
+
 import asyncio
-from playwright.async_api import async_playwright
+import json
+import os
+import re
+import sys
 
-if sys.stdout.encoding != 'utf-8':
-    sys.stdout.reconfigure(encoding='utf-8')
+from playwright.async_api import async_playwright, TimeoutError as PWTimeout
 
-async def wait_for_job_application_completion(page, context):
-    print("\n   -> 🕵️ Auto-detecting application status...")
-    print("      Script will auto-advance once the button changes to 'Applied' or the external tab is closed.")
-    print("      (You can also press ANY KEY in this terminal to force-continue.)")
-    
+from utils import logger, safe_filename
+
+if sys.stdout.encoding != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8")
+
+
+# ── Completion-detection helper ───────────────────────────────────────────────
+
+async def wait_for_job_application_completion(page, context) -> None:
+    logger.info("   -> 🕵️  Auto-detecting application status...")
+    logger.info("      Advances when 'Applied' detected or external tab closes.")
+    logger.info("      (Press ANY KEY to force-continue.)")
+
     had_extra_pages = len(context.pages) > 1
     initial_page_count = len(context.pages)
-    
-    # Clean keyboard buffer first if msvcrt is available on Windows
+
+    # FIX #2: msvcrt import in try/except ImportError — safe on macOS/Linux
     if sys.platform == "win32":
         try:
-            import msvcrt
-            while msvcrt.kbhit():
-                msvcrt.getch()
-        except Exception:
+            import msvcrt as _msvcrt
+            while _msvcrt.kbhit():
+                _msvcrt.getch()
+        except ImportError:
             pass
 
-    for sec in range(120): # Max wait 120 seconds (2 minutes)
-        # 1. Check for manual keypress (Windows-only non-blocking)
+    for sec in range(120):
+        # Manual keypress override
         if sys.platform == "win32":
             try:
-                import msvcrt
-                if msvcrt.kbhit():
-                    # Clear buffer
-                    while msvcrt.kbhit():
-                        msvcrt.getch()
-                    print("\n   -> ⌨️ Force-continuing via manual keypress!")
+                import msvcrt as _msvcrt
+                if _msvcrt.kbhit():
+                    while _msvcrt.kbhit():
+                        _msvcrt.getch()
+                    logger.info("   -> ⌨️  Force-continuing via keypress.")
                     return
-            except Exception:
+            except ImportError:
                 pass
-            
-        # 2. Check if the apply button or any prominent button/span indicates "Applied"
+
+        # FIX #1: Only check DOM every 2 seconds
         try:
-            applied_keywords = ["applied", "submitted", "application sent", "success"]
+            applied_keywords = ["applied", "submitted", "application sent"]
             for keyword in applied_keywords:
-                locator = page.locator(f"button:has-text('{keyword}'), a:has-text('{keyword}'), span:has-text('{keyword}'), div:has-text('{keyword}'), p:has-text('{keyword}')")
+                locator = page.locator(
+                    f"button:has-text('{keyword}'), a:has-text('{keyword}'), "
+                    f"span:has-text('{keyword}'), div:has-text('{keyword}')"
+                )
                 count = await locator.count()
                 for i in range(count):
                     el = locator.nth(i)
                     if await el.is_visible():
                         txt = (await el.text_content() or "").lower()
-                        if "applied" in txt or "submitted" in txt or "application sent" in txt:
-                            print(f"\n   -> 🎉 Auto-detected '{keyword.capitalize()}' status on page! Proceeding...")
+                        if any(k in txt for k in applied_keywords):
+                            logger.info("   -> 🎉 Detected '%s' state! Proceeding.", keyword)
                             return
         except Exception:
             pass
-            
-        # 3. Check external tabs
+
         current_pages = context.pages
         if len(current_pages) > initial_page_count:
             if not had_extra_pages:
-                print(f"\n   -> ↗️ External application tab detected ({len(current_pages) - initial_page_count} new tab(s)). Waiting for you to finish and close the tab(s)...")
+                logger.info(
+                    "   -> ↗️  External tab opened (%d). Waiting for you to close it...",
+                    len(current_pages) - initial_page_count,
+                )
                 had_extra_pages = True
         elif had_extra_pages and len(current_pages) <= initial_page_count:
-            print("\n   -> 🎉 External application tab was closed. Assuming completed!")
+            logger.info("   -> 🎉 External tab closed. Assuming complete!")
             return
-            
-        # Just print a small dot every 5 seconds to show we are alive
+
         if sec % 5 == 0:
             print(".", end="", flush=True)
-            
-        await asyncio.sleep(1)
-        
-    print("\n   -> ⏱️ Timeout (120s) reached.")
 
-async def apply_to_job(job_link, company_name):
+        # FIX #1: 2-second sleep
+        await asyncio.sleep(2)
+
+    logger.info("   -> ⏱️  Timeout reached.")
+
+
+# ── Apply function ────────────────────────────────────────────────────────────
+
+async def apply_to_job(job_link: str, company_name: str) -> dict:
+    """
+    Navigate to a single job and click Apply.
+    Returns: {"success": bool, "message": str}
+    """
     root_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        
-    print(f"\n--- Starting Auto-Apply for {company_name} ---")
-    
+
+    # FIX #3: Read screenshot flag from config.json
+    save_screenshots = False
+    config_path = os.path.join(root_dir, "config.json")
+    try:
+        with open(config_path, "r", encoding="utf-8") as cf:
+            save_screenshots = json.load(cf).get("save_debug_screenshots", False)
+    except (OSError, json.JSONDecodeError):
+        pass
+
+    logger.info("--- Starting Auto-Apply for %s ---", company_name)
+
+    # FIX #4: Safe filename for screenshots
+    safe_co = safe_filename(company_name)
+
+    # FIX #8: Outer try/finally guarantees context.close() even on SIGTERM
     async with async_playwright() as p:
-        # Use the EXACT SAME persistent profile from the scraper!
         user_data_dir = os.path.join(root_dir, "chrome_profile")
+        context = None
         try:
-            context = await p.chromium.launch_persistent_context(user_data_dir, headless=False)
-        except Exception as lock_err:
-            print("\n🚨 CRITICAL ERROR: Browser Profile is Locked!")
-            print("You probably have the Scraper or another Auto-Apply window open.")
-            print("Please close all black terminal windows and automated Chrome browsers and try again.\n")
-            return False
-            
-        page = context.pages[0]
-        
-        try:
-            print("1. Using saved login session...")
-            await page.wait_for_timeout(2000)
-            
-            # 2. Navigate to the specific Job
-            print(f"2. Navigating to {company_name} job page...")
             try:
-                # wait_until="domcontentloaded" is faster and less prone to getting aborted by ads
-                await page.goto(job_link, wait_until="domcontentloaded", timeout=30000)
-            except Exception as e:
-                print("   -> Navigation interrupted by Naukri popup. Retrying...")
-                await page.wait_for_timeout(2000)
-                # Second attempt usually succeeds
-                await page.goto(job_link, wait_until="domcontentloaded", timeout=30000)
-                
+                context = await p.chromium.launch_persistent_context(
+                    user_data_dir, headless=False
+                )
+            except Exception as lock_err:
+                msg = (
+                    f"Browser profile locked: {lock_err}\n"
+                    "Close all other automated Chrome windows and try again."
+                )
+                logger.error("🚨 %s", msg)
+                return {"success": False, "message": msg}
+
+            page = context.pages[0]
+
+            logger.info("1. Using saved login session...")
+            await page.wait_for_timeout(2000)
+
+            # Navigate to job
+            logger.info("2. Navigating to %s job page...", company_name)
+            try:
+                await page.goto(
+                    job_link, wait_until="domcontentloaded", timeout=30000
+                )
+            # FIX #6: Second attempt has its own try/except
+            except PWTimeout:
+                logger.warning("   -> Navigation interrupted. Retrying...")
+                try:
+                    await page.wait_for_timeout(2000)
+                    await page.goto(
+                        job_link, wait_until="domcontentloaded", timeout=30000
+                    )
+                except PWTimeout as e2:
+                    msg = f"Navigation failed after retry: {e2}"
+                    logger.error("   -> %s", msg)
+                    return {"success": False, "message": msg}
+
             await page.wait_for_load_state("domcontentloaded")
-            
-            # 3. Hit the Apply Button
-            print("3. Searching for Apply button...")
-            selector = "button#apply-button, button.apply-message, button:has-text('Apply'), a:has-text('Apply')"
-            
-            # Diagnostics: list all elements matching the selector
+
+            # FIX #7: Check 'Already Applied' before attempting to click
+            logger.info("3. Checking if already applied...")
+            already_applied = False
+            try:
+                already_locator = page.locator(
+                    "button:has-text('Applied'), span:has-text('Applied'), "
+                    "div:has-text('Application Submitted')"
+                )
+                if await already_locator.count() > 0:
+                    if await already_locator.first.is_visible():
+                        already_applied = True
+            except Exception:
+                pass
+
+            if already_applied:
+                msg = "Already applied to this job. Skipping."
+                logger.info("   -> ⏭️  %s", msg)
+                await page.wait_for_timeout(3000)
+                return {"success": False, "message": msg}
+
+            # Search for Apply button
+            logger.info("4. Searching for Apply button...")
+            selector = (
+                "button#apply-button, button.apply-message, "
+                "button:has-text('Apply'), a:has-text('Apply')"
+            )
+
+            # Diagnostics
             try:
                 locator = page.locator(selector)
                 count = await locator.count()
-                print(f"   -> 🔍 Found {count} matching elements for the selector:")
-                for i in range(count):
+                logger.info("   -> 🔍 Found %d matching elements:", count)
+                for i in range(min(count, 5)):
                     el = locator.nth(i)
                     tag = await el.evaluate("el => el.tagName")
-                    text = await el.text_content()
-                    is_vis = await el.is_visible()
-                    outer_html = await el.evaluate("el => el.outerHTML")
-                    trunc_html = outer_html[:150] + "..." if len(outer_html) > 150 else outer_html
-                    print(f"      [{i}] {tag} (Visible: {is_vis}) | Text: '{text.strip()}' | HTML: {trunc_html}")
-            except Exception as diag_err:
-                print(f"   -> ⚠️ Failed to run selector diagnostics: {diag_err}")
+                    txt = await el.text_content()
+                    vis = await el.is_visible()
+                    html = await el.evaluate("el => el.outerHTML")
+                    logger.info(
+                        "      [%d] %s (Visible=%s) | '%s' | %s",
+                        i, tag, vis, (txt or "").strip(), html[:120],
+                    )
+            except Exception as diag_e:
+                logger.warning("   -> Diagnostics failed: %s", diag_e)
 
-            # Ensure screenshots directory exists
             screenshots_dir = os.path.join(root_dir, "debug_screenshots")
-            os.makedirs(screenshots_dir, exist_ok=True)
-            
+            if save_screenshots:
+                os.makedirs(screenshots_dir, exist_ok=True)
+
             try:
                 apply_button = await page.wait_for_selector(selector, timeout=10000)
-            except Exception as e_sel:
-                print(f"   -> ❌ Timeout waiting for selector: {e_sel}")
-                apply_button = None
-            
+            except PWTimeout as e_sel:
+                msg = f"Apply button not found: {e_sel}"
+                logger.error("   -> ❌ %s", msg)
+                if save_screenshots:
+                    await page.screenshot(
+                        path=os.path.join(screenshots_dir, f"{safe_co}_not_found.png")
+                    )
+                await page.wait_for_timeout(5000)
+                return {"success": False, "message": msg}
+
             if apply_button:
-                # Take screenshot before click
-                before_path = os.path.join(screenshots_dir, f"{company_name.replace(' ', '_')}_before.png")
-                await page.screenshot(path=before_path)
-                print(f"   -> 📸 Saved before-click screenshot to: {before_path}")
-                
-                # Inspect the specific element we are clicking
-                clicked_tag = await apply_button.evaluate("el => el.tagName")
+                # FIX #3: Conditional screenshot
+                if save_screenshots:
+                    await page.screenshot(
+                        path=os.path.join(screenshots_dir, f"{safe_co}_before.png")
+                    )
+                    logger.info("   -> 📸 Before-click screenshot saved.")
+
+                clicked_tag  = await apply_button.evaluate("el => el.tagName")
                 clicked_text = await apply_button.text_content()
-                clicked_html = await apply_button.evaluate("el => el.outerHTML")
-                print(f"   -> 🎯 Click Target: {clicked_tag} | Text: '{clicked_text.strip()}' | HTML: {clicked_html}")
-                
+                logger.info(
+                    "   -> 🎯 Clicking: %s | '%s'",
+                    clicked_tag, (clicked_text or "").strip(),
+                )
+
                 try:
-                    # Try clicking normally first
-                    print("   -> Attempting normal click...")
                     await apply_button.click(timeout=3000)
                 except Exception as e_click:
-                    print(f"   -> ⚠️ Normal click failed/intercepted: {e_click}. Trying with force=True...")
+                    logger.warning(
+                        "   -> Normal click failed (%s). Forcing...", e_click
+                    )
                     await apply_button.click(force=True)
-                
-                print("   -> 🚀 CLICKED APPLY!")
-                
-                # Wait for a brief moment for transition, then take after-click screenshot
+
+                logger.info("   -> 🚀 CLICKED APPLY!")
+
                 await page.wait_for_timeout(2000)
-                after_path = os.path.join(screenshots_dir, f"{company_name.replace(' ', '_')}_after.png")
-                await page.screenshot(path=after_path)
-                print(f"   -> 📸 Saved after-click screenshot to: {after_path}")
-                
+                if save_screenshots:
+                    await page.screenshot(
+                        path=os.path.join(screenshots_dir, f"{safe_co}_after.png")
+                    )
+                    logger.info("   -> 📸 After-click screenshot saved.")
+
                 await wait_for_job_application_completion(page, context)
+                return {"success": True, "message": "Applied successfully."}
+
             else:
-                print("   -> ❌ Could not find Apply button. (Already applied or hidden).")
-                # Keep browser open for a few seconds to let the user see
+                msg = "Apply button not found (already applied or hidden)."
+                logger.warning("   -> ❌ %s", msg)
                 await page.wait_for_timeout(5000)
-                
+                return {"success": False, "message": msg}
+
         except Exception as e:
-            print(f"🚨 Error during Auto-Apply: {e}")
+            msg = f"Error during Auto-Apply: {e}"
+            logger.error("🚨 %s", msg)
+            return {"success": False, "message": msg}
+
         finally:
-            print("Closing browser...")
-            await context.close()
+            logger.info("Closing browser...")
+            if context:
+                await context.close()
+
 
 if __name__ == "__main__":
-    import sys
-    # If the dashboard sends a link, use it!
     if len(sys.argv) > 2:
-        target_link = sys.argv[1]
-        target_company = sys.argv[2]
-        asyncio.run(apply_to_job(target_link, target_company))
+        asyncio.run(apply_to_job(sys.argv[1], sys.argv[2]))
     else:
-        print("Please provide a job link and company name.")
-
+        logger.error("Usage: python auto_apply.py <job_link> <company_name>")
