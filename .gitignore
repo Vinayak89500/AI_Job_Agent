@@ -12,6 +12,10 @@ VSH_APM_Resume.docx
 autonomous_ai_job_agent.pptx
 Template_Resume.docx
 
+# Temp files - never commit
+frame_*.jpg
+*.bak
+
 # Personal / generated files - keep local only
 AI_Job_Agent_Conversation_Export.md
 AI_Job_Agent_Expert_Audit_Report.docx

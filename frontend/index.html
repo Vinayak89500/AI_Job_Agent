@@ -43,12 +43,24 @@
                 </div>
                 <div>
                     <label class="block text-sm font-bold text-green-400 mb-1">
-                        Groq API Key (Free) 
+                        Groq API Key (Free)
                         <a href="https://console.groq.com/keys" target="_blank" class="text-xs text-blue-400 hover:underline ml-1 font-normal">(Get one here ↗)</a>
                     </label>
                     <input type="password" id="setup-groq" placeholder="gsk_..." class="w-full bg-gray-900 text-green-400 font-mono rounded p-3 border border-green-700 focus:border-green-500 outline-none shadow-inner">
                 </div>
             </div>
+
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-bold text-orange-400 mb-1">Naukri Email</label>
+                    <input type="text" id="setup-naukri-email" placeholder="you@example.com" class="w-full bg-gray-700 text-white rounded p-3 border border-orange-700 focus:border-orange-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-orange-400 mb-1">Naukri Password</label>
+                    <input type="password" id="setup-naukri-password" placeholder="••••••••" class="w-full bg-gray-700 text-white rounded p-3 border border-orange-700 focus:border-orange-500 outline-none">
+                </div>
+            </div>
+            <p class="text-xs text-gray-500 mb-4 -mt-2">⚠️ Naukri credentials are saved locally to your .env file only — never sent anywhere.</p>
 
             <div class="mb-6">
                 <label class="block text-sm text-gray-400 mb-1">Master Career Profile (Your giant, unfiltered resume text)</label>
@@ -356,13 +368,15 @@
             status.innerHTML = "Saving config and embedding Vector Database in the background...";
 
             const payload = {
-                fullName: document.getElementById('setup-name').value,
-                cityCountry: document.getElementById('setup-location').value,
-                phone: document.getElementById('setup-phone').value,
-                email: document.getElementById('setup-email').value,
-                linkedin: document.getElementById('setup-linkedin').value,
-                groqApiKey: document.getElementById('setup-groq').value,
-                resumeText: document.getElementById('setup-resume').value
+                fullName:       document.getElementById('setup-name').value,
+                cityCountry:    document.getElementById('setup-location').value,
+                phone:          document.getElementById('setup-phone').value,
+                email:          document.getElementById('setup-email').value,
+                linkedin:       document.getElementById('setup-linkedin').value,
+                groqApiKey:     document.getElementById('setup-groq').value,
+                resumeText:     document.getElementById('setup-resume').value,
+                naukriEmail:    document.getElementById('setup-naukri-email').value,
+                naukriPassword: document.getElementById('setup-naukri-password').value,
             };
 
             try {

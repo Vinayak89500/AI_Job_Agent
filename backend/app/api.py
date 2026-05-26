@@ -25,6 +25,14 @@ import secrets
 import subprocess
 import sys
 
+# Ensure backend/app is on sys.path so `from utils import ...` works
+# regardless of whether the server is started via:
+#   python backend/app/api.py        (bat file — works automatically)
+#   uvicorn backend.app.api:app      (dev mode — needs this line)
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+if _APP_DIR not in sys.path:
+    sys.path.insert(0, _APP_DIR)
+
 from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import HTMLResponse
@@ -100,13 +108,15 @@ class OpenRequest(BaseModel):
 
 
 class SetupRequest(BaseModel):
-    fullName:    str
-    cityCountry: str
-    phone:       str
-    email:       str
-    linkedin:    str
-    groqApiKey:  str
-    resumeText:  str
+    fullName:       str
+    cityCountry:    str
+    phone:          str
+    email:          str
+    linkedin:       str
+    groqApiKey:     str
+    resumeText:     str
+    naukriEmail:    str = ""
+    naukriPassword: str = ""
 
 
 class ResetRequest(BaseModel):
@@ -234,6 +244,35 @@ def setup_agent(req: SetupRequest) -> dict:
 
         with open(MASTER_PROF_PATH, "w", encoding="utf-8") as f:
             f.write(req.resumeText)
+
+        # Write Naukri credentials + Groq key to .env so scraper can read them
+        env_path = os.path.join(ROOT_DIR, ".env")
+        env_lines: list[str] = []
+        if os.path.exists(env_path):
+            with open(env_path, "r", encoding="utf-8") as ef:
+                env_lines = ef.readlines()
+
+        def _set_env_var(lines: list[str], key: str, value: str) -> list[str]:
+            """Update or append a KEY=value line."""
+            for i, line in enumerate(lines):
+                if line.startswith(f"{key}="):
+                    lines[i] = f"{key}={value}\n"
+                    return lines
+            lines.append(f"{key}={value}\n")
+            return lines
+
+        if req.naukriEmail:
+            env_lines = _set_env_var(env_lines, "NAUKRI_EMAIL", req.naukriEmail)
+        if req.naukriPassword:
+            env_lines = _set_env_var(env_lines, "NAUKRI_PASSWORD", req.naukriPassword)
+        if req.groqApiKey:
+            env_lines = _set_env_var(env_lines, "GROQ_API_KEY", req.groqApiKey)
+
+        with open(env_path, "w", encoding="utf-8") as ef:
+            ef.writelines(env_lines)
+
+        # Reload env so the running server picks up new values immediately
+        load_dotenv(env_path, override=True)
 
         db_loader_path = os.path.join(ROOT_DIR, "backend", "app", "db_loader.py")
         env_vars = os.environ.copy()
