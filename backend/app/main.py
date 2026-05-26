@@ -302,6 +302,30 @@ RULES:
                 elif stripped:
                     add_md_paragraph(doc, stripped)
 
+            # ── ATS Improvement Notes section ─────────────────────────────────
+            doc.add_paragraph()  # blank line spacer
+            sep = doc.add_paragraph("─" * 60)
+            sep.runs[0].font.color.rgb = docx.shared.RGBColor(0x99, 0x99, 0x99)
+
+            ats_heading = doc.add_paragraph()
+            ats_run = ats_heading.add_run(f"📋  ATS IMPROVEMENT NOTES  —  Score: {score}/100")
+            ats_run.bold = True
+            ats_run.font.color.rgb = docx.shared.RGBColor(0xC0, 0x39, 0x2B)
+
+            note = doc.add_paragraph()
+            note.add_run("⚠️  This section is for your eyes only — remove before submitting.").italic = True
+            note.runs[0].font.color.rgb = docx.shared.RGBColor(0x99, 0x99, 0x99)
+
+            if missing and missing != "Unknown":
+                kw_para = doc.add_paragraph()
+                kw_para.add_run("Missing Keywords:  ").bold = True
+                kw_para.add_run(missing)
+
+            if feedback and feedback != "No suggestions provided.":
+                fb_para = doc.add_paragraph()
+                fb_para.add_run("Recruiter Feedback:  ").bold = True
+                fb_para.add_run(feedback)
+
             doc.save(docx_path)
             logger.info(
                 "-> ✅ SUCCESS! Score: %d/100. Saved: Tailored_Resumes/%s",
