@@ -373,6 +373,40 @@ def trigger_batch_apply(_: None = Depends(require_token)) -> dict:
 
 @app.post("/api/generate")
 def trigger_generate(_: None = Depends(require_token)) -> dict:
+    # Pre-flight checks — give clear errors instead of silent subprocess death
+    if not os.path.exists(CONFIG_PATH):
+        raise HTTPException(
+            status_code=400,
+            detail="Setup not complete. Please fill in the Setup Wizard first."
+        )
+    chroma_db_path = os.path.join(ROOT_DIR, "backend", "chroma_db")
+    if not os.path.exists(chroma_db_path):
+        raise HTTPException(
+            status_code=400,
+            detail="Vector DB not initialised. Complete Setup Wizard and wait ~30s for embedding to finish."
+        )
+    if not os.path.exists(CSV_PATH):
+        raise HTTPException(
+            status_code=400,
+            detail="No jobs found. Run the scraper first."
+        )
+    # Check at least one Company Website job exists
+    company_jobs = 0
+    try:
+        with open(CSV_PATH, "r", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            next(reader, None)
+            for row in reader:
+                if len(row) >= 4 and row[3] == "Company Website":
+                    company_jobs += 1
+    except OSError:
+        pass
+    if company_jobs == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="No 'Company Website' jobs in your list — nothing to generate resumes for. Scrape more jobs first."
+        )
+
     script_path = os.path.join(ROOT_DIR, "backend", "app", "main.py")
     env_vars = os.environ.copy()
     env_vars["PYTHONIOENCODING"] = "utf-8"
@@ -382,7 +416,7 @@ def trigger_generate(_: None = Depends(require_token)) -> dict:
             creationflags=_NEW_CONSOLE,  # FIX #1
             env=env_vars,
         )
-        return {"status": "success"}
+        return {"status": "success", "message": f"Generating resumes for {company_jobs} company website job(s)."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

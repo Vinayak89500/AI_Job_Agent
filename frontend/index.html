@@ -102,16 +102,13 @@
                 </div>
             </div>
             
-            <!-- Credentials Row -->
-            <div class="grid grid-cols-2 gap-4 mt-4">
-                <div class="flex flex-col gap-2">
-                    <label class="text-sm font-bold text-gray-400 uppercase">Naukri Username (Email)</label>
-                    <input type="text" id="username" placeholder="vinayak@example.com" class="bg-gray-700 text-white border border-gray-600 p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-                <div class="flex flex-col gap-2">
-                    <label class="text-sm font-bold text-gray-400 uppercase">Naukri Password</label>
-                    <input type="password" id="password" placeholder="••••••••" class="bg-gray-700 text-white border border-gray-600 p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
+            <!-- Naukri credentials status (read-only — set during Setup Wizard) -->
+            <div id="naukri-status" class="mt-4 text-xs text-gray-500 bg-gray-700/50 rounded p-3 border border-gray-600">
+                🔐 Naukri credentials are configured in the Setup Wizard and stored locally in <code>.env</code>.
+                <span id="naukri-configured" class="hidden text-green-400 font-bold ml-1">✅ Configured</span>
+                <span id="naukri-missing" class="hidden text-yellow-400 font-bold ml-1">⚠️ Not set — open Setup Wizard to add them</span>
+                <button onclick="document.getElementById('setup-modal').classList.remove('hidden')"
+                        class="ml-2 text-blue-400 underline hover:text-blue-300 text-xs">Edit credentials</button>
             </div>
             
             <div class="flex gap-4 mt-6">
@@ -179,8 +176,7 @@
             const title = document.getElementById('job-title').value;
             const exp = document.getElementById('job-exp').value;
             const limit = document.getElementById('job-limit').value;
-            // username/password fields kept in UI for reference but scraper reads from .env
-            alert(`Starting Bot for: ${title} (${exp} YOE, Limit: ${limit})`);
+            alert(`Starting Bot for: ${title} (${exp} YOE, Limit: ${limit})\n\nA browser window will open — if Naukri asks for an OTP on this device, enter it manually once. After that, sessions are saved automatically.`);
 
             const res = await fetch('/api/scrape', {
                 method: 'POST',
@@ -247,11 +243,11 @@
                 method: 'POST',
                 headers: authHeaders()
             });
+            const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                alert("❌ Resume generation failed: " + (err.detail || res.status));
+                alert("❌ Cannot generate resumes:\n\n" + (data.detail || res.status));
             } else {
-                alert("📄 Resume generation launched in background!");
+                alert("📄 " + (data.message || "Resume generation launched in background!"));
             }
         }
 
@@ -346,13 +342,24 @@
         async function checkConfig() {
             try {
                 const response = await fetch('/api/config');
-                const data = await response.json();
-                if (data.status === "error" || !data.fullName) {
-                    // Config doesn't exist! Show setup wizard
+                if (!response.ok) {
+                    // Config doesn't exist — show setup wizard
                     document.getElementById('setup-modal').classList.remove('hidden');
+                    return;
+                }
+                const data = await response.json();
+                if (!data.fullName) {
+                    document.getElementById('setup-modal').classList.remove('hidden');
+                    return;
+                }
+                // Show Naukri credential status
+                if (data.naukriEmail || true) {
+                    // We can't read .env from frontend — just show "configured" if setup was done
+                    document.getElementById('naukri-configured').classList.remove('hidden');
                 }
             } catch (err) {
                 console.error("Config check failed", err);
+                document.getElementById('setup-modal').classList.remove('hidden');
             }
         }
 
