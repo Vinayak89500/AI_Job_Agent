@@ -4,6 +4,5 @@ pydantic
 playwright
 chromadb==0.5.23
 openai
-sentence-transformers
 python-docx
 python-dotenv

@@ -19,7 +19,7 @@ import os
 import sys
 
 import chromadb
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
 from utils import logger
 
@@ -96,10 +96,9 @@ def main() -> None:
     # ── Connect to ChromaDB ───────────────────────────────────────────────────
     db_path = os.path.join(ROOT_DIR, "backend", "chroma_db")
 
-    # FIX #3: Pin the embedding model explicitly
-    embedding_fn = SentenceTransformerEmbeddingFunction(
-        model_name="all-MiniLM-L6-v2"
-    )
+    # Use ChromaDB's built-in ONNX embedding (same all-MiniLM-L6-v2 model,
+    # no PyTorch required — ~200 MB vs ~2 GB for sentence-transformers)
+    embedding_fn = DefaultEmbeddingFunction()
 
     client = chromadb.PersistentClient(path=db_path)
 
@@ -113,7 +112,7 @@ def main() -> None:
 
     collection = client.create_collection(
         name="career_projects",
-        embedding_function=embedding_fn,  # FIX #3
+        embedding_function=embedding_fn,
     )
 
     # ── Chunk the resume ──────────────────────────────────────────────────────

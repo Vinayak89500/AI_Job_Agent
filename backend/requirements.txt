@@ -1,8 +1,4 @@
-google-genai
-python-dotenv
-fastapi
-uvicorn
-python-docx
-
-
+# This file is kept for reference only.
+# The canonical requirements file is /requirements.txt in the project root.
+# The Start_Job_Agent.bat installs from there.
 
